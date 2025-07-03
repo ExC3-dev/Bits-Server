@@ -1,0 +1,16 @@
+{
+“dependencies”: {
+“node.js”: “^2.8.5”,
+},
+“name”: “backend”,
+“version”: “1.0.0”,
+“main”: “Server.js”,
+“type”: “server”,
+“scripts”: {
+“start”: “node Server.js”
+},
+“keywords”: ,
+“author”: “”,
+“license”: “”,
+“description”: “”
+}
