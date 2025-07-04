@@ -32,7 +32,7 @@ function findSafePosition() {
     if (!isWall(x, y) && !isOccupied(x, y)) return { x, y };
     attempts++;
   }
-  return { x: 0, y: 0 }; // fallback
+  return { x: 0, y: 0 };
 }
 
 async function filterMessage(msg) {
@@ -41,6 +41,9 @@ async function filterMessage(msg) {
       params: { text: msg }
     });
     return res.data.result;
+  } catch (e) {
+    return msg.replace(/(badword1|badword2|badword3)/gi, "***");
+  }
 }
 
 io.on("connection", (socket) => {
@@ -76,12 +79,13 @@ io.on("connection", (socket) => {
 
   socket.on("set_name", (name) => {
     if (players[socket.id]) players[socket.id].username = name;
+    io.emit("update", players);
   });
 
   socket.on("boom_wall", () => {
     const wall = players[socket.id];
     if (!wall) return;
-    let collision = Object.values(players).some(p => p.id !== socket.id && p.x === wall.x && p.y === wall.y);
+    const collision = Object.values(players).some(p => p.id !== socket.id && p.x === wall.x && p.y === wall.y);
     if (!collision && !isWall(wall.x, wall.y)) {
       walls.push({ x: wall.x, y: wall.y });
       io.emit("wall_added", { x: wall.x, y: wall.y });
