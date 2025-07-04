@@ -16,6 +16,8 @@ app.use(express.static("public"));
 let players = {};
 let walls = JSON.parse(fs.readFileSync("wall.json", "utf8"));
 
+const GRID_SIZE = 25;
+
 function isWall(x, y) {
   return walls.some(w => w.x === x && w.y === y);
 }
@@ -27,8 +29,8 @@ function isOccupied(x, y) {
 function findSafePosition() {
   let attempts = 0;
   while (attempts < 1000) {
-    const x = Math.floor(Math.random() * 250);
-    const y = Math.floor(Math.random() * 250);
+    const x = Math.floor(Math.random() * GRID_SIZE);
+    const y = Math.floor(Math.random() * GRID_SIZE);
     if (!isWall(x, y) && !isOccupied(x, y)) return { x, y };
     attempts++;
   }
@@ -55,7 +57,8 @@ io.on("connection", (socket) => {
     x: spawn.x,
     y: spawn.y,
     color: "#" + Math.floor(Math.random() * 16777215).toString(16),
-    username: "Guest"
+    username: "Guest",
+    lastMove: Date.now()
   };
 
   socket.emit("init", { players, walls });
@@ -65,12 +68,16 @@ io.on("connection", (socket) => {
   socket.on("move", (dir) => {
     const p = players[socket.id];
     if (!p) return;
+    const now = Date.now();
+    if (now - p.lastMove < 100) return; // 100ms delay between moves
+    p.lastMove = now;
+
     let nx = p.x, ny = p.y;
     if (dir === "left") nx--;
     if (dir === "right") nx++;
     if (dir === "up") ny--;
     if (dir === "down") ny++;
-    if (nx >= 0 && ny >= 0 && nx < 250 && ny < 250 && !isWall(nx, ny) && !isOccupied(nx, ny)) {
+    if (nx >= 0 && ny >= 0 && nx < GRID_SIZE && ny < GRID_SIZE && !isWall(nx, ny) && !isOccupied(nx, ny)) {
       p.x = nx;
       p.y = ny;
     }
