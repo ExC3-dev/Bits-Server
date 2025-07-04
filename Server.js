@@ -10,7 +10,7 @@ const io = new Server(server, {
 });
 
 let players = {};
-const walls = JSON.parse(fs.readFileSync("wall.json", "utf8"));
+let walls = JSON.parse(fs.readFileSync("wall.json", "utf8"));
 
 function isWall(x, y) {
   return walls.some(w => w.x === x && w.y === y);
@@ -21,8 +21,8 @@ io.on("connection", (socket) => {
 
   players[socket.id] = {
     id: socket.id,
-    x: Math.floor(Math.random() * 50),
-    y: Math.floor(Math.random() * 50),
+    x: Math.floor(Math.random() * 100),
+    y: Math.floor(Math.random() * 100),
     color: "#" + Math.floor(Math.random() * 16777215).toString(16),
     username: "Guest"
   };
@@ -38,7 +38,7 @@ io.on("connection", (socket) => {
     if (dir === "right") nx++;
     if (dir === "up") ny--;
     if (dir === "down") ny++;
-    if (!isWall(nx, ny) && nx >= 0 && ny >= 0 && nx < 100 && ny < 100) {
+    if (!isWall(nx, ny)) {
       p.x = nx;
       p.y = ny;
     }
@@ -47,6 +47,28 @@ io.on("connection", (socket) => {
 
   socket.on("set_name", (name) => {
     if (players[socket.id]) players[socket.id].username = name;
+  });
+
+  socket.on("boom_wall", () => {
+    const wall = players[socket.id];
+    if (!wall) return;
+    for (let id in players) {
+      const p = players[id];
+      if (p.x === wall.x && p.y === wall.y) {
+        const directions = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+        const [dx, dy] = directions[Math.floor(Math.random() * directions.length)];
+        p.x += dx;
+        p.y += dy;
+      }
+    }
+    walls.push({ x: wall.x, y: wall.y });
+    io.emit("wall_added", { x: wall.x, y: wall.y });
+    io.emit("update", players);
+  });
+
+  socket.on("chat_message", (data) => {
+    const name = players[socket.id]?.username || "Anonymous";
+    io.emit("chat_message", { name, msg: data.msg });
   });
 
   socket.on("disconnect", () => {
