@@ -2,12 +2,16 @@ const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
 const fs = require("fs");
+const path = require("path");
+const axios = require("axios");
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: { origin: "*" }
 });
+
+app.use(express.static("public"));
 
 let players = {};
 let walls = JSON.parse(fs.readFileSync("wall.json", "utf8"));
@@ -23,12 +27,20 @@ function isOccupied(x, y) {
 function findSafePosition() {
   let attempts = 0;
   while (attempts < 1000) {
-    const x = Math.floor(Math.random() * 100);
-    const y = Math.floor(Math.random() * 100);
+    const x = Math.floor(Math.random() * 250);
+    const y = Math.floor(Math.random() * 250);
     if (!isWall(x, y) && !isOccupied(x, y)) return { x, y };
     attempts++;
   }
   return { x: 0, y: 0 }; // fallback
+}
+
+async function filterMessage(msg) {
+  try {
+    const res = await axios.post("https://www.purgomalum.com/service/json", null, {
+      params: { text: msg }
+    });
+    return res.data.result;
 }
 
 io.on("connection", (socket) => {
@@ -45,6 +57,7 @@ io.on("connection", (socket) => {
 
   socket.emit("init", { players, walls });
   socket.broadcast.emit("player_join", players[socket.id]);
+  io.emit("chat_message", { name: "System", msg: `${players[socket.id].username} joined.` });
 
   socket.on("move", (dir) => {
     const p = players[socket.id];
@@ -54,7 +67,7 @@ io.on("connection", (socket) => {
     if (dir === "right") nx++;
     if (dir === "up") ny--;
     if (dir === "down") ny++;
-    if (!isWall(nx, ny) && !isOccupied(nx, ny)) {
+    if (nx >= 0 && ny >= 0 && nx < 250 && ny < 250 && !isWall(nx, ny) && !isOccupied(nx, ny)) {
       p.x = nx;
       p.y = ny;
     }
@@ -68,30 +81,23 @@ io.on("connection", (socket) => {
   socket.on("boom_wall", () => {
     const wall = players[socket.id];
     if (!wall) return;
-    for (let id in players) {
-      const p = players[id];
-      if (p.x === wall.x && p.y === wall.y) {
-        const directions = [[0, -1], [0, 1], [-1, 0], [1, 0]];
-        const [dx, dy] = directions[Math.floor(Math.random() * directions.length)];
-        const nx = p.x + dx;
-        const ny = p.y + dy;
-        if (!isWall(nx, ny) && !isOccupied(nx, ny)) {
-          p.x = nx;
-          p.y = ny;
-        }
-      }
+    let collision = Object.values(players).some(p => p.id !== socket.id && p.x === wall.x && p.y === wall.y);
+    if (!collision && !isWall(wall.x, wall.y)) {
+      walls.push({ x: wall.x, y: wall.y });
+      io.emit("wall_added", { x: wall.x, y: wall.y });
     }
-    walls.push({ x: wall.x, y: wall.y });
-    io.emit("wall_added", { x: wall.x, y: wall.y });
     io.emit("update", players);
   });
 
-  socket.on("chat_message", (data) => {
+  socket.on("chat_message", async (data) => {
     const name = players[socket.id]?.username || "Anonymous";
-    io.emit("chat_message", { name, msg: data.msg });
+    const cleanMsg = await filterMessage(data.msg);
+    io.emit("chat_message", { name, msg: cleanMsg });
   });
 
   socket.on("disconnect", () => {
+    const name = players[socket.id]?.username || "Guest";
+    io.emit("chat_message", { name: "System", msg: `${name} left.` });
     delete players[socket.id];
     io.emit("player_leave", socket.id);
   });
@@ -100,4 +106,3 @@ io.on("connection", (socket) => {
 server.listen(3000, () => {
   console.log("Server running on port 3000");
 });
-
