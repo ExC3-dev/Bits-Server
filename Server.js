@@ -16,13 +16,29 @@ function isWall(x, y) {
   return walls.some(w => w.x === x && w.y === y);
 }
 
+function isOccupied(x, y) {
+  return Object.values(players).some(p => p.x === x && p.y === y);
+}
+
+function findSafePosition() {
+  let attempts = 0;
+  while (attempts < 1000) {
+    const x = Math.floor(Math.random() * 100);
+    const y = Math.floor(Math.random() * 100);
+    if (!isWall(x, y) && !isOccupied(x, y)) return { x, y };
+    attempts++;
+  }
+  return { x: 0, y: 0 }; // fallback
+}
+
 io.on("connection", (socket) => {
   console.log("User connected", socket.id);
 
+  const spawn = findSafePosition();
   players[socket.id] = {
     id: socket.id,
-    x: Math.floor(Math.random() * 100),
-    y: Math.floor(Math.random() * 100),
+    x: spawn.x,
+    y: spawn.y,
     color: "#" + Math.floor(Math.random() * 16777215).toString(16),
     username: "Guest"
   };
@@ -38,7 +54,7 @@ io.on("connection", (socket) => {
     if (dir === "right") nx++;
     if (dir === "up") ny--;
     if (dir === "down") ny++;
-    if (!isWall(nx, ny)) {
+    if (!isWall(nx, ny) && !isOccupied(nx, ny)) {
       p.x = nx;
       p.y = ny;
     }
@@ -57,8 +73,12 @@ io.on("connection", (socket) => {
       if (p.x === wall.x && p.y === wall.y) {
         const directions = [[0, -1], [0, 1], [-1, 0], [1, 0]];
         const [dx, dy] = directions[Math.floor(Math.random() * directions.length)];
-        p.x += dx;
-        p.y += dy;
+        const nx = p.x + dx;
+        const ny = p.y + dy;
+        if (!isWall(nx, ny) && !isOccupied(nx, ny)) {
+          p.x = nx;
+          p.y = ny;
+        }
       }
     }
     walls.push({ x: wall.x, y: wall.y });
@@ -80,3 +100,4 @@ io.on("connection", (socket) => {
 server.listen(3000, () => {
   console.log("Server running on port 3000");
 });
+
