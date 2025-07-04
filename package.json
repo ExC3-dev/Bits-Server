@@ -5,7 +5,7 @@
   "main": "Server.js",
   "type": "server",
   "scripts": {
-    "start": "node Server.js",
+    "start": "node Server.js"
   },
   "keywords": [
     "backend",
