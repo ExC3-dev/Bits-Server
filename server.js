@@ -103,5 +103,5 @@ setInterval(() => {
 }, 1000 / 20);
 
 http.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
+  console.log(`Server running at ${PORT}`);
 });
