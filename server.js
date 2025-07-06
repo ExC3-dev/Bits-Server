@@ -17,6 +17,7 @@ try {
   console.log("Walls loaded:", walls);
 } catch (e) {
   console.log("No walls.json found or error loading it, starting with empty walls.");
+  console.log(e);
   walls = [];
 }
 
