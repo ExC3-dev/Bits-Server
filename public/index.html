@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Snake-Like Multiplayer Grid</title>
+  <style>
+    body {
+      background: #111;
+      color: white;
+      font-family: monospace, monospace;
+      text-align: center;
+      user-select: none;
+    }
+    canvas {
+      background: #222;
+      display: block;
+      margin: 20px auto;
+      image-rendering: pixelated;
+      border: 2px solid #555;
+    }
+    #overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.85);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      color: white;
+      font-size: 20px;
+      z-index: 10;
+    }
+    #overlay input, #overlay button {
+      font-size: 16px;
+      padding: 8px;
+      margin: 8px;
+      border-radius: 4px;
+      border: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="overlay">
+    <div>Enter your name:</div>
+    <input type="text" id="usernameInput" maxlength="12" placeholder="Player123" />
+    <button id="startBtn">Start Game</button>
+  </div>
+
+  <canvas id="game" width="500" height="500"></canvas>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const scale = 20;
+    const GRID_SIZE = 25;
+    const overlay = document.getElementById('overlay');
+    const usernameInput = document.getElementById('usernameInput');
+    const startBtn = document.getElementById('startBtn');
+
+    let players = {};
+    let walls = {};
+    let lastMoveTime = 0;
+
+    let shiftHeld = false;
+
+    startBtn.onclick = () => {
+      const username = usernameInput.value.trim() || "Player";
+      overlay.style.display = "none";
+
+      socket.emit('join', { username });
+      requestAnimationFrame(gameLoop);
+    };
+
+    // Track shift key state
+    window.addEventListener('keydown', e => {
+      if (e.key === 'Shift') shiftHeld = true;
+    });
+    window.addEventListener('keyup', e => {
+      if (e.key === 'Shift') shiftHeld = false;
+    });
+
+    window.addEventListener('keydown', e => {
+      if (overlay.style.display !== 'none') return; // Don't move until game started
+      if (!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) return;
+
+      const now = Date.now();
+      if (now - lastMoveTime < 100) return;
+      lastMoveTime = now;
+
+      if (e.key === ' ') {
+        socket.emit('placeWall');
+        return;
+      }
+
+      const dir = {
+        ArrowUp: 'up',
+        ArrowDown: 'down',
+        ArrowLeft: 'left',
+        ArrowRight: 'right'
+      }[e.key];
+
+      socket.emit('move', { dir, shift: shiftHeld });
+    });
+
+    socket.on('update', data => {
+      players = data.players;
+      walls = data.walls;
+    });
+
+    function drawGrid() {
+      ctx.strokeStyle = '#444';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= GRID_SIZE; i++) {
+        ctx.beginPath();
+        ctx.moveTo(i * scale + 0.5, 0);
+        ctx.lineTo(i * scale + 0.5, GRID_SIZE * scale);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(0, i * scale + 0.5);
+        ctx.lineTo(GRID_SIZE * scale, i * scale + 0.5);
+        ctx.stroke();
+      }
+    }
+
+    function gameLoop() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      drawGrid();
+
+      // Draw walls
+      for (const w of walls) {
+        ctx.fillStyle = w.color;
+        ctx.fillRect(w.x * scale, w.y * scale, scale, scale);
+      }
+
+      // Draw players and names
+      for (const id in players) {
+        const p = players[id];
+        ctx.fillStyle = p.color;
+        ctx.fillRect(p.x * scale, p.y * scale, scale, scale);
+
+        ctx.fillStyle = 'white';
+        ctx.font = '14px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(p.username, p.x * scale + scale / 2, p.y * scale - 5);
+      }
+
+      requestAnimationFrame(gameLoop);
+    }
+  </script>
+</body>
+</html>
