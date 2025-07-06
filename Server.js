@@ -1,119 +1,132 @@
 const express = require("express");
-const http = require("http");
-const { Server } = require("socket.io");
+const app = express();
+const http = require("http").createServer(app);
+const io = require("socket.io")(http);
 const fs = require("fs");
 const path = require("path");
-const axios = require("axios");
 
-const app = express();
-const server = http.createServer(app);
-const io = new Server(server, {
-  cors: { origin: "*" }
-});
-
-app.use(express.static("public"));
-
-let players = {};
-let walls = JSON.parse(fs.readFileSync("wall.json", "utf8"));
-
+const PORT = process.env.PORT || 3000;
 const GRID_SIZE = 25;
+const players = {};
+let walls = [];
 
-function isWall(x, y) {
-  return walls.some(w => w.x === x && w.y === y);
+// Load walls from walls.json
+try {
+  const data = fs.readFileSync('./walls.json', 'utf-8');
+  walls = JSON.parse(data);
+  console.log("Walls loaded:", walls);
+} catch (e) {
+  console.log("No walls.json found or error loading it, starting with empty walls.");
+  walls = [];
 }
 
+app.use(express.static(path.join(__dirname, "public")));
+
+function randomColor() {
+  return '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
+}
+
+// Helper: Check if a tile is occupied by wall or player
 function isOccupied(x, y) {
-  return Object.values(players).some(p => p.x === x && p.y === y);
-}
-
-function findSafePosition() {
-  let attempts = 0;
-  while (attempts < 1000) {
-    const x = Math.floor(Math.random() * GRID_SIZE);
-    const y = Math.floor(Math.random() * GRID_SIZE);
-    if (!isWall(x, y) && !isOccupied(x, y)) return { x, y };
-    attempts++;
+  if (walls.some(w => w.x === x && w.y === y)) return true;
+  for (const id in players) {
+    const p = players[id];
+    if (p.x === x && p.y === y) return true;
   }
-  return { x: 0, y: 0 };
-}
-
-async function filterMessage(msg) {
-  try {
-    const res = await axios.post("https://www.purgomalum.com/service/json", null, {
-      params: { text: msg }
-    });
-    return res.data.result;
-  } catch (e) {
-    return msg.replace(/(badword1|badword2|badword3)/gi, "***");
-  }
+  return false;
 }
 
 io.on("connection", (socket) => {
-  console.log("User connected", socket.id);
+  console.log("User connected:", socket.id);
 
-  const spawn = findSafePosition();
-  players[socket.id] = {
-    id: socket.id,
-    x: spawn.x,
-    y: spawn.y,
-    color: "#" + Math.floor(Math.random() * 16777215).toString(16),
-    username: "Guest",
-    lastMove: Date.now()
-  };
+  socket.on("join", ({ username }) => {
+    // Assign random color server-side, ignore client color for consistency
+    const color = randomColor();
 
-  socket.emit("init", { players, walls });
-  socket.broadcast.emit("player_join", players[socket.id]);
-  io.emit("chat_message", { name: "System", msg: `${players[socket.id].username} joined.` });
+    // Find a spawn spot NOT in a wall or player
+    let x, y;
+    let tries = 0;
+    do {
+      x = Math.floor(Math.random() * GRID_SIZE);
+      y = Math.floor(Math.random() * GRID_SIZE);
+      tries++;
+      if (tries > 1000) break; // fail-safe
+    } while (isOccupied(x, y));
 
-  socket.on("move", (dir) => {
+    players[socket.id] = { x, y, color, username, lastDir: null };
+    console.log(`Player ${username} spawned at (${x},${y}) with color ${color}`);
+  });
+
+  socket.on("move", ({ dir, shift }) => {
     const p = players[socket.id];
     if (!p) return;
-    const now = Date.now();
-    if (now - p.lastMove < 100) return; // 100ms delay between moves
-    p.lastMove = now;
 
-    let nx = p.x, ny = p.y;
-    if (dir === "left") nx--;
-    if (dir === "right") nx++;
-    if (dir === "up") ny--;
-    if (dir === "down") ny++;
-    if (nx >= 0 && ny >= 0 && nx < GRID_SIZE && ny < GRID_SIZE && !isWall(nx, ny) && !isOccupied(nx, ny)) {
-      p.x = nx;
-      p.y = ny;
+    // If shift held + direction => remove wall
+    if (shift && p.lastDir !== null) {
+      // Use current dir for removal, else fallback to lastDir
+      const removeDir = dir || p.lastDir;
+
+      let targetX = p.x;
+      let targetY = p.y;
+
+      switch (removeDir) {
+        case "up": targetY--; break;
+        case "down": targetY++; break;
+        case "left": targetX--; break;
+        case "right": targetX++; break;
+      }
+      // Clamp inside grid
+      if (targetX >= 0 && targetX < GRID_SIZE && targetY >= 0 && targetY < GRID_SIZE) {
+        // Find wall index at that spot
+        const wallIndex = walls.findIndex(w => w.x === targetX && w.y === targetY);
+        if (wallIndex !== -1) {
+          walls.splice(wallIndex, 1);
+          console.log(`Wall removed at (${targetX},${targetY}) by ${p.username}`);
+        }
+      }
+      return; // Don't move when shift held
     }
-    io.emit("update", players);
-  });
 
-  socket.on("set_name", (name) => {
-    if (players[socket.id]) players[socket.id].username = name;
-    io.emit("update", players);
-  });
+    // Normal movement
+    let newX = p.x;
+    let newY = p.y;
 
-  socket.on("boom_wall", () => {
-    const wall = players[socket.id];
-    if (!wall) return;
-    const collision = Object.values(players).some(p => p.id !== socket.id && p.x === wall.x && p.y === wall.y);
-    if (!collision && !isWall(wall.x, wall.y)) {
-      walls.push({ x: wall.x, y: wall.y });
-      io.emit("wall_added", { x: wall.x, y: wall.y });
+    switch (dir) {
+      case "up": newY--; break;
+      case "down": newY++; break;
+      case "left": newX--; break;
+      case "right": newX++; break;
     }
-    io.emit("update", players);
+
+    // Clamp inside grid
+    newX = Math.max(0, Math.min(GRID_SIZE - 1, newX));
+    newY = Math.max(0, Math.min(GRID_SIZE - 1, newY));
+
+    // Block if occupied by player or wall
+    if (isOccupied(newX, newY)) return;
+
+    p.x = newX;
+    p.y = newY;
+    p.lastDir = dir; // Track last successful move dir
   });
 
-  socket.on("chat_message", async (data) => {
-    const name = players[socket.id]?.username || "Anonymous";
-    const cleanMsg = await filterMessage(data.msg);
-    io.emit("chat_message", { name, msg: cleanMsg });
+  socket.on("placeWall", () => {
+    const p = players[socket.id];
+    if (!p) return;
+
+    // Avoid duplicate walls
+    if (walls.some(w => w.x === p.x && w.y === p.y)) return;
+
+    walls.push({ x: p.x, y: p.y, color: p.color });
   });
 
   socket.on("disconnect", () => {
-    const name = players[socket.id]?.username || "Guest";
-    io.emit("chat_message", { name: "System", msg: `${name} left.` });
     delete players[socket.id];
-    io.emit("player_leave", socket.id);
   });
 });
 
-server.listen(3000, () => {
-  console.log("Server running on port 3000");
-});
+setInterval(() => {
+  io.emit("update", { players, walls });
+}, 1000 / 20);
+
+http.listen(PORT, () => console.log(`Server running on port ${PORT}`));
