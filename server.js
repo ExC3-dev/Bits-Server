@@ -10,7 +10,6 @@ const GRID_SIZE = 25;
 const players = {};
 let walls = [];
 
-// Load wall data
 try {
   const data = fs.readFileSync("./walls.json", "utf-8");
   walls = JSON.parse(data);
@@ -19,7 +18,6 @@ try {
   console.log("No walls.json found or error loading it. Starting with no walls.");
 }
 
-// Serve static files
 app.use(express.static(path.join(__dirname, "public")));
 
 function randomColor() {
