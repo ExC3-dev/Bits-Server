@@ -58,23 +58,27 @@ io.on("connection", (socket) => {
   });
 
 
-  socket.on('chat', async msg => {
+ socket.on('chat', async msg => {
     const p = players[socket.id];
-    if (!p) return;
-
-    try {
-      const response = await fetch(`https://www.purgomalum.com/service/json?text=${encodeURIComponent(msg)}`);
-      const data = await response.json();
-      const filtered = data.result || msg;
-
-      io.emit('chat', { username: p.username, message: filtered });
-
-    } catch (e) {
-      
-      io.emit('chat', { username: p.username, message: msg });
-    }
-  });
+    if (!p || typeof msg !== 'string') return;
   
+    let filtered = msg;
+    try {
+      const res = await fetch(
+        `https://www.purgomalum.com/service/json?text=${encodeURIComponent(msg)}`
+      );
+      const data = await res.json();
+      filtered = data.result || msg;
+    } catch (err) {
+      console.warn('Purgomalum API error, using raw:', err);
+    }
+  
+    io.emit('chat', {
+      username: p.username,
+      message: filtered
+    });
+  });
+    
   socket.on("move", ({ dir, shift }) => {
     const p = players[socket.id];
     if (!p) return;
