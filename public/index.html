@@ -43,10 +43,10 @@
     }
     
     #canvas {
-      display: flex; /* Enable flexbox for centering */
-      justify-content: center; /* Center horizontally */
-      align-items: center; /* Center vertically */
-      height: 100%; /* Make wrapper take up full height */
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100%;
     }
     
     #chat {
@@ -121,8 +121,8 @@
       canvas.height = window.innerHeight;
     }
 
-    resizeCanvas(); // Set initial size
-    window.addEventListener("resize", resizeCanvas); // Resize when window is resized
+    resizeCanvas();
+    window.addEventListener("resize", resizeCanvas);
     
     startBtn.onclick = () => {
       const username = usernameInput.value.trim() || "Player";
@@ -146,12 +146,11 @@
 
     socket.on('chat', ({ username, message }) => {
       const div = document.createElement('div');
-      div.innerHTML = `${username}: ${message}`; // XSS-intentional
+      div.innerHTML = `${username}: ${message}`;
       chatMessages.appendChild(div);
       chatMessages.scrollTop = chatMessages.scrollHeight;
     });
 
-    // Track shift key state
     window.addEventListener('keydown', e => {
       if (e.key === 'Shift') shiftHeld = true;
     });
@@ -160,7 +159,7 @@
     });
 
     window.addEventListener('keydown', e => {
-      if (overlay.style.display !== 'none') return; // Don't move until game started
+      if (overlay.style.display !== 'none') return;
       if (!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) return;
 
       const now = Date.now();
@@ -208,13 +207,11 @@
 
       drawGrid();
 
-      // Draw walls
       for (const w of walls) {
         ctx.fillStyle = w.color;
         ctx.fillRect(w.x * scale, w.y * scale, scale, scale);
       }
 
-      // Draw players and names
       for (const id in players) {
         const p = players[id];
         ctx.fillStyle = p.color;
@@ -231,3 +228,4 @@
   </script>
 </body>
 </html>
+
